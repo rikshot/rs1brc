@@ -1,9 +1,18 @@
+use ahash::AHashMap;
 use mimalloc::MiMalloc;
+use nom::{
+    bytes::complete::take_until,
+    character::complete::{char, newline, u8},
+    combinator::opt,
+    sequence::{pair, separated_pair, terminated},
+    IResult,
+};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod mmap;
+mod tokio;
 
 #[derive(Debug, Clone, Copy)]
 struct Temperature {
@@ -32,6 +41,31 @@ impl Temperature {
     }
 }
 
+fn fast_float(input: &[u8]) -> IResult<&[u8], f32> {
+    match pair(opt(char('-')), separated_pair(u8, char('.'), u8))(input) {
+        Ok((i, (sign, (integer, fraction)))) => {
+            let float = integer as f32 + fraction as f32 / 10.0;
+            Ok((i, if sign.is_some() { -float } else { float }))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn parser(input: &[u8]) -> IResult<&[u8], (&[u8], f32)> {
+    terminated(
+        separated_pair(take_until(";"), char(';'), fast_float),
+        newline,
+    )(input)
+}
+
+fn update(map: &mut AHashMap<String, Temperature>, city: &str, temperature: &Temperature) {
+    if let Some(value) = map.get_mut(city) {
+        value.update(temperature);
+    } else {
+        map.insert(city.to_owned(), *temperature);
+    }
+}
+
 fn format_results(results: &[(String, Temperature)]) -> String {
     let mut results = results
         .iter()
@@ -49,7 +83,7 @@ fn format_results(results: &[(String, Temperature)]) -> String {
 static BASELINE: &str = include_str!("../baseline.txt");
 
 fn main() {
-    let results = mmap::with_mmap();
+    let results = tokio::with_tokio();
     let output = format_results(&results);
     assert_eq!(BASELINE, output);
     println!("{}", output);

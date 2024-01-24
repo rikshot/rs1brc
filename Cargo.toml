@@ -10,6 +10,9 @@ memmap2 = "*"
 nom = "*"
 mimalloc = { version = "*", default-features = false }
 ahash = "*"
+tokio = { version = "*", features = ["full"] }
+tokio-util = { version = "*", features = ["full"] }
+tokio-stream = "*"
 
 [profile.release]
 lto = "fat"
