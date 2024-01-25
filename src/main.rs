@@ -1,4 +1,3 @@
-use ahash::AHashMap;
 use mimalloc::MiMalloc;
 use nom::{
     bytes::complete::take_until,
@@ -11,7 +10,6 @@ use nom::{
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-mod mmap;
 mod tokio;
 
 #[derive(Debug, Clone, Copy)]
@@ -39,6 +37,13 @@ impl Temperature {
         self.max = f32::max(self.max, other.max);
         self.count += other.count;
     }
+
+    fn update_single(&mut self, temperature: f32) {
+        self.min = f32::min(self.min, temperature);
+        self.mean = (self.mean * self.count as f32 + temperature) / (self.count + 1) as f32;
+        self.max = f32::max(self.max, temperature);
+        self.count += 1;
+    }
 }
 
 fn fast_float(input: &[u8]) -> IResult<&[u8], f32> {
@@ -58,14 +63,6 @@ fn parser(input: &[u8]) -> IResult<&[u8], (&[u8], f32)> {
     )(input)
 }
 
-fn update(map: &mut AHashMap<String, Temperature>, city: &str, temperature: &Temperature) {
-    if let Some(value) = map.get_mut(city) {
-        value.update(temperature);
-    } else {
-        map.insert(city.to_owned(), *temperature);
-    }
-}
-
 fn format_results(results: &[(String, Temperature)]) -> String {
     let mut results = results
         .iter()
@@ -83,7 +80,7 @@ fn format_results(results: &[(String, Temperature)]) -> String {
 static BASELINE: &str = include_str!("../baseline.txt");
 
 fn main() {
-    let results = tokio::with_tokio();
+    let results = tokio::with_decoder();
     let output = format_results(&results);
     assert_eq!(BASELINE, output);
     println!("{}", output);

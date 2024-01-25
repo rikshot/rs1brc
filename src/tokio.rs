@@ -1,94 +1,72 @@
-use std::{io::SeekFrom, str::from_utf8_unchecked};
+use std::str::from_utf8_unchecked;
 
 use ahash::AHashMap;
-use nom::{combinator::iterator, AsBytes};
-use tokio::{
-    fs::File,
-    io::{AsyncReadExt, AsyncSeekExt},
-    task::JoinSet,
+use nom::combinator::iterator;
+use tokio::{fs::File, sync::mpsc};
+use tokio_stream::StreamExt;
+use tokio_util::{
+    bytes::{Buf, BytesMut},
+    codec::{Decoder, Framed},
 };
 
-use crate::{parser, update, Temperature};
+use crate::{parser, Temperature};
+
+struct FastDecoder;
+
+impl Decoder for FastDecoder {
+    type Item = String;
+    type Error = std::io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if src.is_empty() {
+            return Ok(None);
+        }
+        let mut last_newline = src.len() - 1;
+        while last_newline > 0 && src[last_newline] != b'\n' {
+            last_newline -= 1;
+        }
+        if last_newline == 0 {
+            Ok(None)
+        } else {
+            let (data, _) = src.split_at(last_newline + 1);
+            let data = unsafe { from_utf8_unchecked(data) }.to_owned();
+            src.advance(data.len());
+            Ok(Some(data))
+        }
+    }
+}
 
 #[tokio::main]
-pub async fn with_tokio() -> Vec<(String, Temperature)> {
+pub async fn with_decoder() -> Vec<(String, Temperature)> {
     let file = File::open("measurements.txt").await.unwrap();
-    let length = file.metadata().await.unwrap().len() as usize;
-
-    let chunk_count = 8;
-    let chunk_length = length / chunk_count;
-    let last_chunk_length = chunk_length + length % chunk_count;
-
-    let mut chunks: Vec<(usize, usize)> = (0..chunk_count)
-        .map(|index| {
-            let start = index * chunk_length;
-            let end = start
-                + if index < chunk_count - 1 {
-                    chunk_length
-                } else {
-                    last_chunk_length
-                };
-            (start, end)
-        })
-        .collect();
-
-    if chunk_count > 1 {
-        for index in 1..chunk_count {
-            let (_, end) = chunks[index - 1];
-            let mut file = File::open("measurements.txt").await.unwrap();
-            file.seek(SeekFrom::Start(end as u64)).await.unwrap();
-            let mut buffer = [0u8; 100];
-            let _read = file.read(&mut buffer).await.unwrap();
-            let mut extra = 0;
-            while buffer[extra] != b'\n' {
-                extra += 1;
-            }
-            extra += 1;
-            let (_, end) = &mut chunks[index - 1];
-            *end += extra;
-            let (start, _) = &mut chunks[index];
-            *start += extra;
-        }
-    }
-
-    let mut tasks = JoinSet::new();
-    for (start, end) in chunks {
-        let chunk_size = end - start;
-        tasks.spawn(async move {
-            let mut results: AHashMap<String, Temperature> = AHashMap::with_capacity(10000);
-            let mut file = File::open("measurements.txt").await.unwrap();
-            file.seek(SeekFrom::Start(start as u64)).await.unwrap();
-            let mut buffer = vec![0u8; 4 * 1024 * 1024];
-            let mut buffer_start = 0;
-            let mut read = 0;
-            loop {
-                let received = file.read(&mut buffer[buffer_start..]).await.unwrap();
-                let mut iterator = iterator(buffer[..buffer_start + received].as_bytes(), parser);
-                iterator.for_each(|(city, temperature)| {
+    let mut framed = Framed::with_capacity(file, FastDecoder, 8 * 1024 * 1024);
+    let (tx, mut rx) = mpsc::unbounded_channel::<AHashMap<String, Temperature>>();
+    tokio::spawn(async move {
+        while let Some(Ok(chunk)) = framed.next().await {
+            let tx = tx.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut results: AHashMap<String, Temperature> = AHashMap::with_capacity(10000);
+                iterator(chunk.as_bytes(), parser).for_each(|(city, temperature)| {
                     let city = unsafe { from_utf8_unchecked(city) };
-                    let temperature = Temperature::new(temperature);
-                    update(&mut results, city, &temperature);
+                    if let Some(value) = results.get_mut(city) {
+                        value.update_single(temperature);
+                    } else {
+                        results.insert(city.to_owned(), Temperature::new(temperature));
+                    }
                 });
-                read += received;
-                if read >= chunk_size {
-                    break;
-                } else {
-                    let (rest, _) = iterator.finish().unwrap();
-                    let rest = rest.to_vec();
-                    buffer_start = rest.len();
-                    buffer[0..rest.len()].copy_from_slice(&rest);
-                }
+                tx.send(results).unwrap();
+            });
+        }
+    });
+    let mut results: AHashMap<String, Temperature> = AHashMap::with_capacity(10000);
+    while let Some(result) = rx.recv().await {
+        result.iter().for_each(|(city, temperature)| {
+            if let Some(value) = results.get_mut(city) {
+                value.update(temperature);
+            } else {
+                results.insert(city.clone(), *temperature);
             }
-            results
         });
     }
-
-    let mut results: AHashMap<String, Temperature> = AHashMap::with_capacity(10000);
-    while let Some(Ok(result)) = tasks.join_next().await {
-        for (city, temperature) in result.iter() {
-            update(&mut results, city, temperature);
-        }
-    }
-
     results.into_iter().collect::<Vec<(String, Temperature)>>()
 }
