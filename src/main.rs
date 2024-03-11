@@ -3,38 +3,38 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+mod map;
 mod tokio;
 
 #[derive(Debug, Clone, Copy)]
 struct Temperature {
-    min: f32,
-    mean: f32,
-    max: f32,
+    min: i32,
+    max: i32,
+    sum: i32,
     count: u32,
 }
 
 impl Temperature {
-    fn new(temperature: f32) -> Self {
+    fn new(temperature: i32) -> Self {
         Self {
             min: temperature,
-            mean: temperature,
             max: temperature,
+            sum: temperature,
             count: 1,
         }
     }
 
     fn update(&mut self, other: &Temperature) {
-        self.min = f32::min(self.min, other.min);
-        self.mean = (self.mean * self.count as f32 + other.mean * other.count as f32)
-            / (self.count + other.count) as f32;
-        self.max = f32::max(self.max, other.max);
+        self.min = i32::min(self.min, other.min);
+        self.max = i32::max(self.max, other.max);
+        self.sum += other.sum;
         self.count += other.count;
     }
 
-    fn update_single(&mut self, temperature: f32) {
-        self.min = f32::min(self.min, temperature);
-        self.mean = (self.mean * self.count as f32 + temperature) / (self.count + 1) as f32;
-        self.max = f32::max(self.max, temperature);
+    fn update_single(&mut self, temperature: i32) {
+        self.min = i32::min(self.min, temperature);
+        self.max = i32::max(self.max, temperature);
+        self.sum += temperature;
         self.count += 1;
     }
 }
@@ -45,7 +45,10 @@ fn format_results(results: &[(String, Temperature)]) -> String {
         .map(|(city, temperature)| {
             format!(
                 "{}={:.1}/{:.1}/{:.1}",
-                city, temperature.min, temperature.mean, temperature.max
+                city,
+                temperature.min as f32 / 10.0,
+                temperature.sum as f32 / temperature.count as f32 / 10.0,
+                temperature.max as f32 / 10.0
             )
         })
         .collect::<Vec<String>>();

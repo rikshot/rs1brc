@@ -1,4 +1,4 @@
-use std::{hash::BuildHasherDefault, str::from_utf8_unchecked};
+use std::str::from_utf8_unchecked;
 
 use nom::{
     bytes::complete::take_until,
@@ -7,29 +7,29 @@ use nom::{
     sequence::{pair, separated_pair, terminated},
     IResult,
 };
-use rustc_hash::FxHashMap;
 use tokio::{fs::File, sync::mpsc};
 use tokio_stream::StreamExt;
 use tokio_util::{
-    bytes::{Buf, BytesMut},
+    bytes::BytesMut,
     codec::{Decoder, Framed},
 };
 
+use crate::map::Map;
 use crate::Temperature;
 
-fn fast_float(input: &[u8]) -> IResult<&[u8], f32> {
+fn temperature(input: &[u8]) -> IResult<&[u8], i32> {
     match pair(opt(char('-')), separated_pair(u8, char('.'), u8))(input) {
         Ok((i, (sign, (integer, fraction)))) => {
-            let float = integer as f32 + fraction as f32 * 0.1;
-            Ok((i, if sign.is_some() { -float } else { float }))
+            let temp = integer as i32 * 10 + fraction as i32;
+            Ok((i, if sign.is_some() { -temp } else { temp }))
         }
         Err(error) => Err(error),
     }
 }
 
-fn parser(input: &[u8]) -> IResult<&[u8], (&[u8], f32)> {
+fn parser(input: &[u8]) -> IResult<&[u8], (&[u8], i32)> {
     terminated(
-        separated_pair(take_until(";"), char(';'), fast_float),
+        separated_pair(take_until(";"), char(';'), temperature),
         newline,
     )(input)
 }
@@ -44,17 +44,15 @@ impl Decoder for ChunkDecoder {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         match src.iter().rposition(|c| *c == b'\n') {
             Some(index) => {
-                let (data, _) = src.split_at(index + 1);
-                let data = data.to_owned();
-                src.advance(data.len());
-                Ok(Some(data))
+                let data = src.split_to(index + 1);
+                Ok(Some(data.to_vec()))
             }
             None => Ok(None),
         }
     }
 }
 
-type ResultMap = FxHashMap<String, Temperature>;
+type ResultMap = Map<Temperature, 2000>;
 
 #[tokio::main]
 pub async fn with_decoder() -> Vec<(String, Temperature)> {
@@ -66,14 +64,13 @@ pub async fn with_decoder() -> Vec<(String, Temperature)> {
         while let Some(Ok(chunk)) = framed.next().await {
             let tx = tx.clone();
             tokio::task::spawn_blocking(move || {
-                let mut results =
-                    ResultMap::with_capacity_and_hasher(10000, BuildHasherDefault::default());
+                let mut results = ResultMap::new();
                 iterator(chunk.as_slice(), parser).for_each(|(city, temperature)| {
                     let city = unsafe { from_utf8_unchecked(city) };
                     if let Some(value) = results.get_mut(city) {
                         value.update_single(temperature);
                     } else {
-                        results.insert(city.to_owned(), Temperature::new(temperature));
+                        results.set(city, &Temperature::new(temperature));
                     }
                 });
                 tx.send(results).unwrap();
@@ -81,21 +78,24 @@ pub async fn with_decoder() -> Vec<(String, Temperature)> {
         }
     });
     let results = tokio::task::spawn_blocking(move || {
-        let mut results = ResultMap::with_capacity_and_hasher(10000, BuildHasherDefault::default());
+        let mut results = ResultMap::new();
         while let Some(result) = rx.blocking_recv() {
-            result.iter().for_each(|(city, temperature)| {
-                if let Some(value) = results.get_mut(city) {
-                    value.update(temperature);
+            for entry in result.table.iter().flatten() {
+                if let Some(value) = results.get_mut(&entry.key) {
+                    value.update(&entry.value);
                 } else {
-                    results.insert(city.clone(), *temperature);
+                    results.set(&entry.key, &entry.value);
                 }
-            });
+            }
         }
         results
     });
     results
         .await
         .unwrap()
+        .table
         .into_iter()
+        .flatten()
+        .map(|entry| (entry.key, entry.value))
         .collect::<Vec<(String, Temperature)>>()
 }
