@@ -1,4 +1,5 @@
 use mimalloc::MiMalloc;
+use rayon::prelude::*;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -41,7 +42,7 @@ impl Temperature {
 
 fn format_results(results: &[(String, Temperature)]) -> String {
     let mut results = results
-        .iter()
+        .par_iter()
         .map(|(city, temperature)| {
             format!(
                 "{}={:.1}/{:.1}/{:.1}",
@@ -52,15 +53,22 @@ fn format_results(results: &[(String, Temperature)]) -> String {
             )
         })
         .collect::<Vec<String>>();
-    results.sort_unstable();
+    results.par_sort_unstable();
     format!("{{{}}}", results.join(", "))
 }
 
-static BASELINE: &str = include_str!("../baseline.txt");
-
+#[cfg(feature = "assert_result")]
 fn main() {
+    static BASELINE: &str = include_str!("../baseline.txt");
     let results = tokio::with_decoder();
     let output = format_results(&results);
     assert_eq!(BASELINE, output);
+    println!("{}", output);
+}
+
+#[cfg(not(feature = "assert_result"))]
+fn main() {
+    let results = tokio::with_decoder();
+    let output = format_results(&results);
     println!("{}", output);
 }

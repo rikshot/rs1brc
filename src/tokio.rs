@@ -1,12 +1,5 @@
 use std::str::from_utf8_unchecked;
 
-use nom::{
-    bytes::complete::take_until,
-    character::complete::{char, newline, u8},
-    combinator::{iterator, opt},
-    sequence::{pair, separated_pair, terminated},
-    IResult,
-};
 use tokio::{fs::File, sync::mpsc};
 use tokio_stream::StreamExt;
 use tokio_util::{
@@ -17,21 +10,40 @@ use tokio_util::{
 use crate::map::Map;
 use crate::Temperature;
 
-fn temperature(input: &[u8]) -> IResult<&[u8], i32> {
-    match pair(opt(char('-')), separated_pair(u8, char('.'), u8))(input) {
-        Ok((i, (sign, (integer, fraction)))) => {
-            let temp = integer as i32 * 10 + fraction as i32;
-            Ok((i, if sign.is_some() { -temp } else { temp }))
-        }
-        Err(error) => Err(error),
-    }
-}
+type ResultMap = Map<Temperature, 8000>;
 
-fn parser(input: &[u8]) -> IResult<&[u8], (&[u8], i32)> {
-    terminated(
-        separated_pair(take_until(";"), char(';'), temperature),
-        newline,
-    )(input)
+fn parser(chunk: &[u8]) -> ResultMap {
+    let mut results = ResultMap::new();
+
+    let mut start = 0;
+    memchr::memchr_iter(b'\n', chunk).for_each(|mid| {
+        let line = &chunk[start..mid];
+        let length = mid - start;
+        let mut temp = line[length - 1] as i32 - 48 + (line[length - 3] as i32 - 48) * 10;
+        let split = if line[length - 4] == b';' {
+            length - 4
+        } else if line[length - 4] == b'-' {
+            temp = -temp;
+            length - 5
+        } else {
+            temp += (line[length - 4] as i32 - 48) * 100;
+            if line[length - 5] == b';' {
+                length - 5
+            } else {
+                temp = -temp;
+                length - 6
+            }
+        };
+        let city = unsafe { from_utf8_unchecked(&line[..split]) };
+        if let Some(value) = results.get_mut(city) {
+            value.update_single(temp);
+        } else {
+            results.set(city, &Temperature::new(temp));
+        }
+        start = mid + 1;
+    });
+
+    results
 }
 
 struct ChunkDecoder;
@@ -42,7 +54,7 @@ impl Decoder for ChunkDecoder {
 
     #[inline]
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        match src.iter().rposition(|c| *c == b'\n') {
+        match memchr::memrchr(b'\n', src) {
             Some(index) => {
                 let data = src.split_to(index + 1);
                 Ok(Some(data.to_vec()))
@@ -51,8 +63,6 @@ impl Decoder for ChunkDecoder {
         }
     }
 }
-
-type ResultMap = Map<Temperature, 2000>;
 
 #[tokio::main]
 pub async fn with_decoder() -> Vec<(String, Temperature)> {
@@ -64,15 +74,7 @@ pub async fn with_decoder() -> Vec<(String, Temperature)> {
         while let Some(Ok(chunk)) = framed.next().await {
             let tx = tx.clone();
             tokio::task::spawn_blocking(move || {
-                let mut results = ResultMap::new();
-                iterator(chunk.as_slice(), parser).for_each(|(city, temperature)| {
-                    let city = unsafe { from_utf8_unchecked(city) };
-                    if let Some(value) = results.get_mut(city) {
-                        value.update_single(temperature);
-                    } else {
-                        results.set(city, &Temperature::new(temperature));
-                    }
-                });
+                let results = parser(&chunk);
                 tx.send(results).unwrap();
             });
         }

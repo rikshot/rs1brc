@@ -1,6 +1,6 @@
 use std::hash::Hasher;
 
-use rustc_hash::FxHasher;
+use ahash::AHasher;
 
 #[derive(Clone)]
 pub struct Entry<T> {
@@ -21,7 +21,7 @@ impl<T: Clone + Copy, const N: usize> Map<T, N> {
     }
 
     fn find_slot(&self, key: &str) -> (u64, usize) {
-        let mut hasher = FxHasher::default();
+        let mut hasher = AHasher::default();
         hasher.write(key.as_bytes());
         let hash = hasher.finish();
         let mut slot = hash as usize % (N - 1);

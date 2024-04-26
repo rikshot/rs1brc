@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nom = "*"
+memchr = "*"
 mimalloc = { version = "*", default-features = false }
-rustc-hash = "*"
+ahash = { version = "*", default-features = false, features = [
+    "compile-time-rng",
+] }
 tokio = { version = "*", features = [
     "fs",
     "rt-multi-thread",
@@ -15,6 +17,7 @@ tokio = { version = "*", features = [
 ] }
 tokio-util = { version = "*", features = ["codec"] }
 tokio-stream = { version = "*", default-features = false }
+rayon = "*"
 
 [profile.release]
 lto = "fat"
@@ -25,3 +28,6 @@ panic = "abort"
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[features]
+assert_result = []
