@@ -5,6 +5,7 @@ use rayon::prelude::*;
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod map;
+mod parser;
 mod tokio;
 
 #[derive(Debug, Clone, Copy)]
