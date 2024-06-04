@@ -33,36 +33,22 @@ pub type ResultMap = Map<Temperature, 8000>;
 pub fn parser(chunk: &[u8]) -> ResultMap {
     let mut results = ResultMap::new();
 
-    let (_prefix, data, _suffix) = unsafe { chunk.align_to::<u64>() };
-
-    let mut start = 0;
-    for end in data {
-        let newline = has_zero(end ^ create_mask(b'\n'));
-        if newline == 0 {
-            continue;
-        }
-    }
-
     let mut start = 0;
     memchr::memchr_iter(b'\n', chunk).for_each(|mid| {
         let line = &chunk[start..mid];
         let length = mid - start;
-        let mut temp = line[length - 1] as i32 - 48 + (line[length - 3] as i32 - 48) * 10;
-        let split = if line[length - 4] == b';' {
-            length - 4
-        } else if line[length - 4] == b'-' {
-            temp = -temp;
-            length - 5
+        let end = if let Some(end) = line.last_chunk::<8>() {
+            u64::from_be_bytes(*end)
         } else {
-            temp += (line[length - 4] as i32 - 48) * 100;
-            if line[length - 5] == b';' {
-                length - 5
-            } else {
-                temp = -temp;
-                length - 6
-            }
+            u64::from_be_bytes(
+                *[vec![0u8; 8 - length], line.to_vec()]
+                    .concat()
+                    .last_chunk::<8>()
+                    .unwrap(),
+            )
         };
-        let city = unsafe { from_utf8_unchecked(&line[..split]) }.trim_start_matches('\0');
+        let (split, temp) = get_temp_branchless(end);
+        let city = unsafe { from_utf8_unchecked(&line[..length - split - 1]) };
         if let Some(value) = results.get_mut(city) {
             value.update_single(temp);
         } else {

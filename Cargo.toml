@@ -9,7 +9,6 @@ mimalloc = { version = "*", default-features = false }
 ahash = { version = "*", default-features = false, features = [
     "compile-time-rng",
 ] }
-bytes = "*"
 tokio = { version = "*", features = [
     "fs",
     "rt-multi-thread",

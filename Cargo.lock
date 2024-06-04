@@ -323,7 +323,6 @@ name = "rs1brc"
 version = "0.1.0"
 dependencies = [
  "ahash",
- "bytes",
  "memchr",
  "mimalloc",
  "rayon",

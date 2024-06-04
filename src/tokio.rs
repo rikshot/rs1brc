@@ -1,7 +1,9 @@
-use bytes::{Bytes, BytesMut};
 use tokio::{fs::File, sync::mpsc};
 use tokio_stream::StreamExt;
-use tokio_util::codec::{Decoder, Framed};
+use tokio_util::{
+    bytes::BytesMut,
+    codec::{Decoder, Framed},
+};
 
 use crate::{
     parser::{parser, ResultMap},
@@ -14,18 +16,15 @@ static BUFFER_SIZE: usize = 2 * 1024 * 1024;
 struct ChunkDecoder;
 
 impl Decoder for ChunkDecoder {
-    type Item = Bytes;
+    type Item = Vec<u8>;
     type Error = std::io::Error;
 
     #[inline]
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         match memchr::memrchr(b'\n', src) {
             Some(index) => {
-                let mut chunk = BytesMut::with_capacity(BUFFER_SIZE);
                 let data = src.split_to(index + 1);
-                chunk.extend_from_slice(&[0u8].repeat(BUFFER_SIZE - data.len()));
-                chunk.extend_from_slice(&data);
-                Ok(Some(chunk.freeze()))
+                Ok(Some(data.to_vec()))
             }
             None => Ok(None),
         }
