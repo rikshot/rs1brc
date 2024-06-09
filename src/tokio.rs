@@ -6,12 +6,11 @@ use tokio_util::{
 };
 
 use crate::{
-    parser::{parser, ResultMap},
+    parser::{parser, parser_branchless, ResultMap},
     Temperature,
 };
 
-// Tokio MAX_BUF for blocking IO: https://github.com/tokio-rs/tokio/blob/master/tokio/src/io/blocking.rs#L26
-static BUFFER_SIZE: usize = 2 * 1024 * 1024;
+static BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
 struct ChunkDecoder;
 
@@ -35,12 +34,13 @@ impl Decoder for ChunkDecoder {
 pub async fn with_decoder() -> Vec<(String, Temperature)> {
     let (tx, mut rx) = mpsc::unbounded_channel::<ResultMap>();
     tokio::spawn(async move {
-        let file = File::open("measurements.txt").await.unwrap();
+        let mut file = File::open("measurements.txt").await.unwrap();
+        file.set_max_buf_size(BUFFER_SIZE);
         let mut framed = Framed::with_capacity(file, ChunkDecoder, BUFFER_SIZE);
         while let Some(Ok(chunk)) = framed.next().await {
             let tx = tx.clone();
             tokio::task::spawn_blocking(move || {
-                tx.send(parser(&chunk)).unwrap();
+                tx.send(parser_branchless(&chunk)).unwrap();
             });
         }
     });
