@@ -30,16 +30,16 @@ const fn get_temp_branchless(end: u64) -> (usize, i32) {
 
 fn get_temp(line: &[u8]) -> (usize, i32) {
     let length = line.len();
-    let mut temp = *unsafe { line.get_unchecked(length - 1) } as i32 - 48
-        + (*unsafe { line.get_unchecked(length - 3) } as i32 - 48) * 10;
-    let split = if *unsafe { line.get_unchecked(length - 4) } == b';' {
+    let end = unsafe { line.last_chunk::<5>().unwrap_unchecked() };
+    let mut temp = end[4] as i32 - 48 + (end[2] as i32 - 48) * 10;
+    let split = if end[1] == b';' {
         length - 4
-    } else if *unsafe { line.get_unchecked(length - 4) } == b'-' {
+    } else if end[1] == b'-' {
         temp = -temp;
         length - 5
     } else {
-        temp += (*unsafe { line.get_unchecked(length - 4) } as i32 - 48) * 100;
-        if *unsafe { line.get_unchecked(length - 5) } == b';' {
+        temp += (end[1] as i32 - 48) * 100;
+        if end[0] == b';' {
             length - 5
         } else {
             temp = -temp;

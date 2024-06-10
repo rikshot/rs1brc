@@ -6,11 +6,9 @@ use tokio_util::{
 };
 
 use crate::{
-    parser::{parser, parser_branchless, ResultMap},
+    parser::{parser_branchless, ResultMap},
     Temperature,
 };
-
-static BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
 struct ChunkDecoder;
 
@@ -29,6 +27,8 @@ impl Decoder for ChunkDecoder {
         }
     }
 }
+
+static BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
 #[tokio::main]
 pub async fn with_decoder() -> Vec<(String, Temperature)> {
