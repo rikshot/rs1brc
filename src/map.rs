@@ -1,6 +1,4 @@
-use std::hash::Hasher;
-
-use ahash::AHasher;
+use xxhash_rust::xxh3::xxh3_64;
 
 #[derive(Clone)]
 pub struct Entry<T> {
@@ -21,9 +19,7 @@ impl<T: Clone + Copy, const N: usize> Map<T, N> {
     }
 
     fn find_slot(&self, key: &str) -> (u64, usize) {
-        let mut hasher = AHasher::default();
-        hasher.write(key.as_bytes());
-        let hash = hasher.finish();
+        let hash = xxh3_64(key.as_bytes());
         let mut slot = hash as usize % (N - 1);
         loop {
             if let Some(entry) = &self.table[slot] {

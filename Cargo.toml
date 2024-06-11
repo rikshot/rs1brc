@@ -6,9 +6,7 @@ edition = "2021"
 [dependencies]
 memchr = "*"
 mimalloc = { version = "*", default-features = false }
-ahash = { version = "*", default-features = false, features = [
-    "compile-time-rng",
-] }
+xxhash-rust = { version = "*", features = ["xxh3"] }
 tokio = { version = "*", features = [
     "fs",
     "rt-multi-thread",
