@@ -1,5 +1,7 @@
 use std::str::from_utf8_unchecked;
 
+use tokio_util::bytes::Bytes;
+
 use crate::map::Map;
 use crate::Temperature;
 
@@ -49,9 +51,9 @@ fn get_temp(line: &[u8]) -> (usize, i32) {
     (split, temp)
 }
 
-pub type ResultMap = Map<Temperature, 8000>;
+pub type ResultMap = Map<Temperature, 10000>;
 
-pub fn parser_branchless(chunk: &[u8]) -> ResultMap {
+pub fn parser_branchless(chunk: &Bytes) -> ResultMap {
     let mut results = ResultMap::new();
 
     let mut start = 0;

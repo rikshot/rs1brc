@@ -1,5 +1,3 @@
-use xxhash_rust::xxh3::xxh3_64;
-
 #[derive(Clone)]
 pub struct Entry<T> {
     hash: u64,
@@ -11,6 +9,20 @@ pub struct Map<T, const N: usize> {
     pub table: Vec<Option<Entry<T>>>,
 }
 
+#[inline]
+const fn hash(string: &str) -> u64 {
+    let bytes = string.as_bytes();
+    let length = bytes.len();
+    let mut hash = [0u8; 8];
+    hash[0] = bytes[0];
+    hash[1] = bytes[1];
+    hash[2] = bytes[2];
+    hash[7] = bytes[length - 1];
+    hash[6] = bytes[length - 2];
+    hash[5] = bytes[length - 3];
+    u64::from_be_bytes(hash)
+}
+
 impl<T: Clone + Copy, const N: usize> Map<T, N> {
     pub fn new() -> Self {
         Self {
@@ -18,8 +30,9 @@ impl<T: Clone + Copy, const N: usize> Map<T, N> {
         }
     }
 
+    #[inline]
     fn find_slot(&self, key: &str) -> (u64, usize) {
-        let hash = xxh3_64(key.as_bytes());
+        let hash = hash(key);
         let mut slot = hash as usize % (N - 1);
         loop {
             if let Some(entry) = &self.table[slot] {
@@ -33,6 +46,7 @@ impl<T: Clone + Copy, const N: usize> Map<T, N> {
         }
     }
 
+    #[inline]
     pub fn get_mut(&mut self, key: &str) -> Option<&mut T> {
         let (_, slot) = self.find_slot(key);
         if let Some(entry) = &mut self.table[slot] {

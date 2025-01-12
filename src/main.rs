@@ -63,7 +63,7 @@ fn main() {
     static BASELINE: &str = include_str!("../baseline.txt");
     let results = tokio::with_decoder();
     let output = format_results(&results);
-    assert_eq!(BASELINE, output);
+    pretty_assertions::assert_eq!(BASELINE, output);
     println!("{}", output);
 }
 

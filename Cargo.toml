@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 memchr = "*"
 mimalloc = { version = "*", default-features = false }
-xxhash-rust = { version = "*", features = ["xxh3"] }
 tokio = { version = "*", features = [
     "fs",
     "rt-multi-thread",
@@ -16,6 +15,7 @@ tokio = { version = "*", features = [
 tokio-util = { version = "*", features = ["codec"] }
 tokio-stream = { version = "*", default-features = false }
 rayon = "*"
+pretty_assertions = "*"
 
 [profile.release]
 lto = "fat"

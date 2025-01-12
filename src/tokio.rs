@@ -1,8 +1,8 @@
 use tokio::{fs::File, sync::mpsc};
 use tokio_stream::StreamExt;
 use tokio_util::{
-    bytes::BytesMut,
-    codec::{Decoder, Framed},
+    bytes::{Bytes, BytesMut},
+    codec::{Decoder, FramedRead},
 };
 
 use crate::{
@@ -10,10 +10,12 @@ use crate::{
     Temperature,
 };
 
+static BUFFER_SIZE: usize = 8 * 1024 * 1024;
+
 struct ChunkDecoder;
 
 impl Decoder for ChunkDecoder {
-    type Item = Vec<u8>;
+    type Item = Bytes;
     type Error = std::io::Error;
 
     #[inline]
@@ -21,14 +23,13 @@ impl Decoder for ChunkDecoder {
         match memchr::memrchr(b'\n', src) {
             Some(index) => {
                 let data = src.split_to(index + 1);
-                Ok(Some(data.to_vec()))
+                src.reserve(BUFFER_SIZE);
+                Ok(Some(data.freeze()))
             }
             None => Ok(None),
         }
     }
 }
-
-static BUFFER_SIZE: usize = 4 * 1024 * 1024;
 
 #[tokio::main]
 pub async fn with_decoder() -> Vec<(String, Temperature)> {
@@ -36,7 +37,7 @@ pub async fn with_decoder() -> Vec<(String, Temperature)> {
     tokio::spawn(async move {
         let mut file = File::open("measurements.txt").await.unwrap();
         file.set_max_buf_size(BUFFER_SIZE);
-        let mut framed = Framed::with_capacity(file, ChunkDecoder, BUFFER_SIZE);
+        let mut framed = FramedRead::with_capacity(file, ChunkDecoder, BUFFER_SIZE);
         while let Some(Ok(chunk)) = framed.next().await {
             let tx = tx.clone();
             tokio::task::spawn_blocking(move || {
