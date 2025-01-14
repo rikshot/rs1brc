@@ -31,7 +31,7 @@ impl Decoder for ChunkDecoder {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 pub async fn with_decoder() -> Vec<(String, Temperature)> {
     let (tx, mut rx) = mpsc::unbounded_channel::<ResultMap>();
     tokio::spawn(async move {

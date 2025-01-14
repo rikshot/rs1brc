@@ -17,6 +17,7 @@ struct Temperature {
 }
 
 impl Temperature {
+    #[inline]
     fn new(temperature: i32) -> Self {
         Self {
             min: temperature,
@@ -26,6 +27,7 @@ impl Temperature {
         }
     }
 
+    #[inline]
     fn update(&mut self, other: &Temperature) {
         self.min = i32::min(self.min, other.min);
         self.max = i32::max(self.max, other.max);
@@ -33,6 +35,7 @@ impl Temperature {
         self.count += other.count;
     }
 
+    #[inline]
     fn update_single(&mut self, temperature: i32) {
         self.min = i32::min(self.min, temperature);
         self.max = i32::max(self.max, temperature);

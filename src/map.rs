@@ -20,7 +20,7 @@ const fn hash(string: &str) -> u64 {
     hash[7] = bytes[length - 1];
     hash[6] = bytes[length - 2];
     hash[5] = bytes[length - 3];
-    u64::from_be_bytes(hash)
+    u64::from_ne_bytes(hash)
 }
 
 impl<T: Clone + Copy, const N: usize> Map<T, N> {
@@ -35,7 +35,7 @@ impl<T: Clone + Copy, const N: usize> Map<T, N> {
         let hash = hash(key);
         let mut slot = hash as usize % (N - 1);
         loop {
-            if let Some(entry) = &self.table[slot] {
+            if let Some(entry) = unsafe { self.table.get_unchecked(slot) } {
                 if entry.hash == hash {
                     return (hash, slot);
                 }
@@ -49,7 +49,7 @@ impl<T: Clone + Copy, const N: usize> Map<T, N> {
     #[inline]
     pub fn get_mut(&mut self, key: &str) -> Option<&mut T> {
         let (_, slot) = self.find_slot(key);
-        if let Some(entry) = &mut self.table[slot] {
+        if let Some(entry) = unsafe { self.table.get_unchecked_mut(slot) } {
             return Some(&mut entry.value);
         }
         None
@@ -57,10 +57,10 @@ impl<T: Clone + Copy, const N: usize> Map<T, N> {
 
     pub fn set(&mut self, key: &str, value: &T) {
         let (hash, slot) = self.find_slot(key);
-        if let Some(entry) = &mut self.table[slot] {
+        if let Some(entry) = unsafe { self.table.get_unchecked_mut(slot) } {
             entry.value = *value;
         } else {
-            self.table[slot] = Some(Entry {
+            *unsafe { self.table.get_unchecked_mut(slot) } = Some(Entry {
                 hash,
                 key: key.to_string(),
                 value: *value,

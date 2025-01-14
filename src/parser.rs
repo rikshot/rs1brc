@@ -58,7 +58,7 @@ pub fn parser_branchless(chunk: &Bytes) -> ResultMap {
 
     let mut start = 0;
     memchr::memchr_iter(b'\n', chunk).for_each(|mid| {
-        let line = &chunk[start..mid];
+        let line = unsafe { chunk.get_unchecked(start..mid) };
         let length = mid - start;
         let end = if let Some(end) = line.last_chunk::<8>() {
             u64::from_be_bytes(*end)
@@ -71,7 +71,7 @@ pub fn parser_branchless(chunk: &Bytes) -> ResultMap {
             )
         };
         let (split, temp) = get_temp_branchless(end);
-        let city = unsafe { from_utf8_unchecked(&line[..length - split - 1]) };
+        let city = unsafe { from_utf8_unchecked(line.get_unchecked(..length - split - 1)) };
         if let Some(value) = results.get_mut(city) {
             value.update_single(temp);
         } else {
@@ -83,14 +83,14 @@ pub fn parser_branchless(chunk: &Bytes) -> ResultMap {
     results
 }
 
-pub fn parser(chunk: &[u8]) -> ResultMap {
+pub fn parser(chunk: &Bytes) -> ResultMap {
     let mut results = ResultMap::new();
 
     let mut start = 0;
     memchr::memchr_iter(b'\n', chunk).for_each(|mid| {
-        let line = &chunk[start..mid];
+        let line = unsafe { chunk.get_unchecked(start..mid) };
         let (split, temp) = get_temp(line);
-        let city = unsafe { from_utf8_unchecked(&line[..split]) };
+        let city = unsafe { from_utf8_unchecked(line.get_unchecked(..split)) };
         if let Some(value) = results.get_mut(city) {
             value.update_single(temp);
         } else {
