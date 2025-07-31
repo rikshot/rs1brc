@@ -1,24 +1,24 @@
 [package]
 name = "rs1brc"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 memchr = "*"
-mimalloc = { version = "*", default-features = false }
+rayon = "*"
+mimalloc = { version = "*", default-features = false, optional = true }
 tokio = { version = "*", features = [
     "fs",
     "rt-multi-thread",
     "macros",
     "parking_lot",
-] }
-tokio-util = { version = "*", features = ["codec"] }
-tokio-stream = { version = "*", default-features = false }
-rayon = "*"
-pretty_assertions = "*"
+], optional = true }
+tokio-util = { version = "*", features = ["codec"], optional = true }
+tokio-stream = { version = "*", default-features = false, optional = true }
+pretty_assertions = { version = "*", optional = true }
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
 opt-level = 3
 panic = "abort"
@@ -28,4 +28,8 @@ inherits = "release"
 debug = true
 
 [features]
-assert_result = []
+default = ["tokio", "branchless"]
+mimalloc = ["dep:mimalloc"]
+tokio = ["dep:tokio", "dep:tokio-util", "dep:tokio-stream"]
+branchless = []
+assert_result = ["dep:pretty_assertions"]

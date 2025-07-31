@@ -1,3 +1,5 @@
+use crate::temperature::Temperature;
+
 #[derive(Clone)]
 pub struct Entry<T> {
     hash: u64,
@@ -5,9 +7,12 @@ pub struct Entry<T> {
     pub value: T,
 }
 
+#[derive(Clone)]
 pub struct Map<T, const N: usize> {
     pub table: Vec<Option<Entry<T>>>,
 }
+
+pub type ResultMap = Map<Temperature, 10000>;
 
 #[inline]
 const fn hash(string: &str) -> u64 {

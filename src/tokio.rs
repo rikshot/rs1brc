@@ -5,10 +5,9 @@ use tokio_util::{
     codec::{Decoder, FramedRead},
 };
 
-use crate::{
-    parser::{parser_branchless, ResultMap},
-    Temperature,
-};
+use crate::map::ResultMap;
+
+use crate::{parser::parser, temperature::Temperature};
 
 static BUFFER_SIZE: usize = 8 * 1024 * 1024;
 
@@ -41,26 +40,21 @@ pub async fn with_decoder() -> Vec<(String, Temperature)> {
         while let Some(Ok(chunk)) = framed.next().await {
             let tx = tx.clone();
             tokio::task::spawn_blocking(move || {
-                tx.send(parser_branchless(&chunk)).unwrap();
+                tx.send(parser(&chunk)).unwrap();
             });
         }
     });
-    let results = tokio::task::spawn_blocking(move || {
-        let mut results = ResultMap::new();
-        while let Some(result) = rx.blocking_recv() {
-            for entry in result.table.iter().flatten() {
-                if let Some(value) = results.get_mut(&entry.key) {
-                    value.update(&entry.value);
-                } else {
-                    results.set(&entry.key, &entry.value);
-                }
+    let mut results = ResultMap::new();
+    while let Some(result) = rx.recv().await {
+        for entry in result.table.iter().flatten() {
+            if let Some(value) = results.get_mut(&entry.key) {
+                value.update(&entry.value);
+            } else {
+                results.set(&entry.key, &entry.value);
             }
         }
-        results
-    });
+    }
     results
-        .await
-        .unwrap()
         .table
         .into_iter()
         .flatten()

@@ -1,48 +1,20 @@
+#[cfg(feature = "mimalloc")]
 use mimalloc::MiMalloc;
+
 use rayon::prelude::*;
 
+use crate::temperature::Temperature;
+
+#[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod map;
 mod parser;
+mod temperature;
+
+#[cfg(feature = "tokio")]
 mod tokio;
-
-#[derive(Debug, Clone, Copy)]
-struct Temperature {
-    min: i32,
-    max: i32,
-    sum: i32,
-    count: u32,
-}
-
-impl Temperature {
-    #[inline]
-    fn new(temperature: i32) -> Self {
-        Self {
-            min: temperature,
-            max: temperature,
-            sum: temperature,
-            count: 1,
-        }
-    }
-
-    #[inline]
-    fn update(&mut self, other: &Temperature) {
-        self.min = i32::min(self.min, other.min);
-        self.max = i32::max(self.max, other.max);
-        self.sum += other.sum;
-        self.count += other.count;
-    }
-
-    #[inline]
-    fn update_single(&mut self, temperature: i32) {
-        self.min = i32::min(self.min, temperature);
-        self.max = i32::max(self.max, temperature);
-        self.sum += temperature;
-        self.count += 1;
-    }
-}
 
 fn format_results(results: &[(String, Temperature)]) -> String {
     let mut results = results
@@ -61,18 +33,13 @@ fn format_results(results: &[(String, Temperature)]) -> String {
     format!("{{{}}}", results.join(", "))
 }
 
-#[cfg(feature = "assert_result")]
-fn main() {
-    static BASELINE: &str = include_str!("../baseline.txt");
-    let results = tokio::with_decoder();
-    let output = format_results(&results);
-    pretty_assertions::assert_eq!(BASELINE, output);
-    println!("{}", output);
-}
-
-#[cfg(not(feature = "assert_result"))]
 fn main() {
     let results = tokio::with_decoder();
     let output = format_results(&results);
-    println!("{}", output);
+    #[cfg(feature = "assert_result")]
+    {
+        static BASELINE: &str = include_str!("../baseline.txt");
+        pretty_assertions::assert_eq!(BASELINE, output);
+    }
+    println!("{output}");
 }

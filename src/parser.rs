@@ -1,22 +1,25 @@
 use std::str::from_utf8_unchecked;
 
-use tokio_util::bytes::Bytes;
+use crate::map::ResultMap;
 
-use crate::map::Map;
-use crate::Temperature;
+use crate::temperature::Temperature;
 
+#[cfg(feature = "branchless")]
 const fn create_mask(byte: u8) -> u64 {
     (!0u64 / 0xFF) * byte as u64
 }
 
+#[cfg(feature = "branchless")]
 const fn has_zero(value: u64) -> u64 {
     value.wrapping_sub(create_mask(0x01)) & !(value) & create_mask(0x80)
 }
 
+#[cfg(feature = "branchless")]
 const fn bytes_from_end(value: u64, mask: u64) -> u32 {
     (has_zero(value ^ mask).trailing_zeros() - 4) >> 3
 }
 
+#[cfg(feature = "branchless")]
 const fn get_temp_branchless(end: u64) -> (usize, i32) {
     let split = bytes_from_end(end, create_mask(b';'));
     let negative = (has_zero(end ^ create_mask(b'-')) >> (((split - 1) << 3) + 7)) as i32;
@@ -30,7 +33,8 @@ const fn get_temp_branchless(end: u64) -> (usize, i32) {
     (split as usize, (temp ^ -negative) + negative)
 }
 
-fn get_temp(line: &[u8]) -> (usize, i32) {
+#[cfg(not(feature = "branchless"))]
+pub fn get_temp(line: &[u8]) -> (usize, i32) {
     let length = line.len();
     let end = unsafe { line.last_chunk::<5>().unwrap_unchecked() };
     let mut temp = end[4] as i32 - 48 + (end[2] as i32 - 48) * 10;
@@ -51,9 +55,8 @@ fn get_temp(line: &[u8]) -> (usize, i32) {
     (split, temp)
 }
 
-pub type ResultMap = Map<Temperature, 10000>;
-
-pub fn parser_branchless(chunk: &Bytes) -> ResultMap {
+#[cfg(feature = "branchless")]
+pub fn parser(chunk: &[u8]) -> ResultMap {
     let mut results = ResultMap::new();
 
     let mut start = 0;
@@ -63,12 +66,9 @@ pub fn parser_branchless(chunk: &Bytes) -> ResultMap {
         let end = if let Some(end) = line.last_chunk::<8>() {
             u64::from_be_bytes(*end)
         } else {
-            u64::from_be_bytes(
-                *[vec![0u8; 8 - length], line.to_vec()]
-                    .concat()
-                    .last_chunk::<8>()
-                    .unwrap(),
-            )
+            let mut buffer = [0u8; 8];
+            buffer[8 - length..].copy_from_slice(line);
+            u64::from_be_bytes(buffer)
         };
         let (split, temp) = get_temp_branchless(end);
         let city = unsafe { from_utf8_unchecked(line.get_unchecked(..length - split - 1)) };
@@ -83,7 +83,8 @@ pub fn parser_branchless(chunk: &Bytes) -> ResultMap {
     results
 }
 
-pub fn parser(chunk: &Bytes) -> ResultMap {
+#[cfg(not(feature = "branchless"))]
+pub fn parser(chunk: &[u8]) -> ResultMap {
     let mut results = ResultMap::new();
 
     let mut start = 0;
@@ -106,6 +107,7 @@ pub fn parser(chunk: &Bytes) -> ResultMap {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "branchless")]
     #[test]
     fn parser_branchless() {
         let line = "Rostov-on-Don;8.7";
@@ -115,6 +117,7 @@ mod tests {
         assert_eq!(87, temp);
     }
 
+    #[cfg(not(feature = "branchless"))]
     #[test]
     fn parser() {
         let line = "Rostov-on-Don;8.7";
